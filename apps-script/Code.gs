@@ -111,13 +111,14 @@ function getSeenIds_(sh) {
 
 /** Extract { amount, merchant, category } from an email body (null if not a spend). */
 function parseEmail_(text) {
-  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  // Drop tracking URLs (random chars can look like amounts) and markdown asterisks.
+  const t = String(text || '').replace(/https?:\/\/\S+/g, ' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
   if (!t) return null;
   const low = t.toLowerCase();
 
   // Skip credits / refunds unless it's clearly a debit.
   if (/\b(credited|refund|received|reversal|failed|declined)\b/.test(low) &&
-    !/\b(debited|spent|purchase|made on|payment of|upi txn|has been made)\b/.test(low)) return null;
+    !/\b(debited|spent|purchase|payment of|upi txn|has been made)\b/.test(low)) return null;
   // Skip statements, OTPs, and marketing (these aren't spends).
   if (/statement|amount due|minimum (amount )?due|due date|bill generated|e-statement|\botp\b|one time password|reward point|\boffer\b|cashback|voucher|congratulations|pre-?approved|discount|% off/.test(low)) return null;
 
@@ -129,24 +130,24 @@ function parseEmail_(text) {
 
   let name = '';
   const m =
-    t.match(/\bto VPA\s+([a-z0-9._-]+)@/i) ||
-    t.match(/\bat\s+([A-Za-z0-9&.'\- ]{2,40}?)\s+(?:on|dated)\b/i) ||
-    t.match(/\bInfo[:\- ]+(?:UPI[\/-])?([A-Za-z0-9&.\- ]{2,40})/i) ||
-    t.match(/\bto\s+([A-Za-z0-9&.'@\- ]{2,40}?)\s+(?:on|dated|via|ref|upi|\()/i) ||
-    t.match(/\bTo[:\- ]+([A-Za-z0-9&.'@\- ]{2,40}?)\s+(?:Date|UPI|Ref|on\b)/i);
+    t.match(/towards\s+VPA\s+[^\s(]+\s*\(([^)]{2,60})\)/i) ||          // HDFC UPI: merchant in ( )
+    t.match(/towards\s+([A-Za-z0-9&.,'()\- ]{2,60}?)\s+on\b/i) ||       // HDFC card: towards MERCHANT on
+    t.match(/towards\s+VPA\s+([a-z0-9._-]+)@/i) ||                      // UPI fallback: VPA handle
+    t.match(/\bto\s+(?:payee\s+)?([A-Za-z0-9&.,'()\- ]{2,60}?)\s+(?:on|dated)\b/i) || // NEFT/IMPS
+    t.match(/\bat\s+([A-Za-z0-9&.'\- ]{2,40}?)\s+(?:on|dated)\b/i);     // generic: at MERCHANT on
   if (m) {
-    name = m[1].trim().replace(/[.\-]+$/, '');
+    name = m[1].trim().replace(/^(VPA|payee)\s+/i, '').replace(/[.\-]+$/, '').trim();
     if (/^(rs|inr|\d)/i.test(name)) name = '';  // reject amount fragments
   }
 
-  return { amount: amount, merchant: name, category: autoCategory_(t) };
+  return { amount: amount, merchant: name, category: autoCategory_(name) };
 }
 
 function autoCategory_(text) {
   const s = ' ' + String(text || '').toLowerCase() + ' ';
   const rules = [
-    ['Food', ['swiggy', 'zomato', 'restaurant', 'hotel', 'cafe', 'dominos', 'mcdonald', 'kfc', 'biryani', 'pizza', 'bakery']],
-    ['Groceries', ['bigbasket', 'dmart', 'blinkit', 'zepto', 'grocery', 'supermarket', 'reliance fresh', 'jiomart', 'kirana']],
+    ['Food', ['swiggy', 'zomato', 'restaurant', 'hotel', 'cafe', 'dominos', 'mcdonald', 'kfc', 'biryani', 'biriyani', 'pizza', 'bakery', 'food', 'kitchen', 'mess', 'sweets', 'tiffin', 'juice', 'dhaba']],
+    ['Groceries', ['bigbasket', 'dmart', 'blinkit', 'zepto', 'grocery', 'supermarket', 'reliance fresh', 'jiomart', 'kirana', 'mart', 'stores', 'provision']],
     ['Fuel', ['iocl', 'indian oil', 'hpcl', 'bpcl', 'bharat petroleum', 'shell', 'nayara', 'petrol', 'diesel', 'fuel', 'fastag']],
     ['Shopping', ['amazon', 'flipkart', 'myntra', 'ajio', 'meesho', 'nykaa', 'tatacliq', 'decathlon', 'ikea']],
     ['Transport', ['uber', 'ola', 'rapido', 'irctc', 'metro', 'redbus', 'indigo', 'spicejet', 'railway']],
