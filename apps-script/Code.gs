@@ -149,7 +149,7 @@ function autoCategory_(text) {
     ['Groceries', ['bigbasket', 'dmart', 'blinkit', 'zepto', 'grocery', 'supermarket', 'reliance fresh', 'jiomart', 'kirana']],
     ['Fuel', ['iocl', 'indian oil', 'hpcl', 'bpcl', 'bharat petroleum', 'shell', 'nayara', 'petrol', 'diesel', 'fuel', 'fastag']],
     ['Shopping', ['amazon', 'flipkart', 'myntra', 'ajio', 'meesho', 'nykaa', 'tatacliq', 'decathlon', 'ikea']],
-    ['Transport', ['uber', 'ola', 'rapido', 'irctc', 'metro', 'redbus', 'cab', 'indigo', 'spicejet', 'railway', 'toll']],
+    ['Transport', ['uber', 'ola', 'rapido', 'irctc', 'metro', 'redbus', 'indigo', 'spicejet', 'railway']],
     ['Bills', ['electricity', 'water bill', 'broadband', 'airtel', 'jio', 'vodafone', 'recharge', 'dth', 'postpaid', 'bill', 'emi', 'loan', 'nach', 'insurance', 'premium', 'sip']],
     ['Health', ['pharmacy', 'apollo', 'medplus', 'hospital', 'clinic', 'medicine', 'diagnostic', 'netmeds', 'pharmeasy']],
     ['Fun', ['netflix', 'spotify', 'hotstar', 'prime video', 'bookmyshow', 'pvr', 'inox', 'cinema', 'disney']]
@@ -192,5 +192,23 @@ function debugScan() {
     seen[from] = true; d++;
     Logger.log('↳ FROM: %s | %s', from, m.getSubject());
   }));
+}
+
+/**
+ * Prints the plain-text body of your latest HDFC UPI + credit-card alerts,
+ * so the exact merchant wording can be parsed. Run it, then paste the two
+ * blocks here (X-out account/card/reference numbers; keep amount + merchant).
+ */
+function dumpBody() {
+  const pick = (q) => {
+    const th = GmailApp.search(q + ' newer_than:30d', 0, 1);
+    if (!th.length) return '(none found)';
+    const msgs = th[0].getMessages();
+    return msgs[msgs.length - 1].getPlainBody().replace(/\s+/g, ' ').trim().slice(0, 800);
+  };
+  Logger.log('=== UPI BODY ===');
+  Logger.log(pick('from:hdfcbank.bank.in subject:(UPI txn)'));
+  Logger.log('=== CREDIT CARD BODY ===');
+  Logger.log(pick('from:hdfcbank.bank.in subject:(payment was made)'));
 }
 
