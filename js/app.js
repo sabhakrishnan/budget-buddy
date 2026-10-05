@@ -294,21 +294,29 @@
   // ---------- Month math ----------
   function computeTotals(key) {
     const month = getMonth(key);
+    const expenses = month.expenses || [];
     let income = 0, fixedSpend = 0, budgetTotal = 0, varSpend = 0;
+
+    // Actual debits captured this month (synced + manual).
+    for (const e of expenses) varSpend += Number(e.amount || 0);
+    const expAmounts = expenses.map((e) => Math.round(Number(e.amount || 0)));
+    const usedExp = {};
 
     for (const item of state.fixedItems) {
       const st = month.fixedStatus[item.id] || {};
       const amount = st.amount != null ? Number(st.amount) : Number(item.amount || 0);
       if (item.crdb === 'Cr') {
         income += amount;
-      } else {
-        // Only count toward spend if paid, else still show as planned
-        fixedSpend += amount;
+        continue;
       }
-      if (item.crdb !== 'Cr') budgetTotal += Number(item.budget || 0);
+      // Only recurring (Fixed) obligations carry across months; skip one-time (OM) items.
+      if (item.fixedOM !== 'Fixed') continue;
+      budgetTotal += Number(item.budget || amount || 0);
+      // If an actual debit of the same amount exists, that already covers this obligation.
+      const idx = expAmounts.findIndex((x, i) => x === Math.round(amount) && !usedExp[i]);
+      if (idx >= 0) { usedExp[idx] = true; continue; }
+      fixedSpend += amount;
     }
-
-    for (const e of month.expenses) varSpend += Number(e.amount || 0);
 
     const salaryIncome = Number(state.salary || 0);
     const totalIncome = salaryIncome + income;
