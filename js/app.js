@@ -295,7 +295,7 @@
   function computeTotals(key) {
     const month = getMonth(key);
     const expenses = month.expenses || [];
-    let income = 0, fixedSpend = 0, budgetTotal = 0, varSpend = 0;
+    let income = 0, varSpend = 0, paidFixed = 0, budgetDue = 0;
 
     // Actual debits captured this month (synced + manual).
     for (const e of expenses) varSpend += Number(e.amount || 0);
@@ -305,30 +305,28 @@
     for (const item of state.fixedItems) {
       const st = month.fixedStatus[item.id] || {};
       const amount = st.amount != null ? Number(st.amount) : Number(item.amount || 0);
-      if (item.crdb === 'Cr') {
-        income += amount;
-        continue;
-      }
-      // Only recurring (Fixed) obligations carry across months; skip one-time (OM) items.
-      if (item.fixedOM !== 'Fixed') continue;
-      budgetTotal += Number(item.budget || amount || 0);
-      // If an actual debit of the same amount exists, that already covers this obligation.
+      if (item.crdb === 'Cr') { income += amount; continue; }
+      if (item.fixedOM !== 'Fixed') continue;          // one-offs don't recur across months
+      // Already covered by an actual debit this month? It's counted in varSpend.
       const idx = expAmounts.findIndex((x, i) => x === Math.round(amount) && !usedExp[i]);
       if (idx >= 0) { usedExp[idx] = true; continue; }
-      fixedSpend += amount;
+      if (st.status === 'Paid') paidFixed += amount;   // ticked Paid -> counts as spent
+      else budgetDue += amount;                        // pending -> fixed budget still due
     }
 
     const salaryIncome = Number(state.salary || 0);
     const totalIncome = salaryIncome + income;
-    const totalSpend = fixedSpend + varSpend;
-    const remaining = totalIncome - totalSpend;
+    const actualSpent = varSpend + paidFixed;          // "Total spent" (actual)
+    const committed = actualSpent + budgetDue;         // spent + fixed budget still due
     const goalContrib = state.goals.reduce((s, g) => s + Number(g.monthly || 0), 0);
+    const leftForMonth = totalIncome - committed - goalContrib;  // free to spend rest of month
 
     return {
       salaryIncome, otherIncome: income, totalIncome,
-      fixedSpend, varSpend, totalSpend,
-      budgetTotal, remaining, goalContrib,
-      afterGoals: remaining - goalContrib
+      varSpend, paidFixed, budgetDue, actualSpent, committed, goalContrib, leftForMonth,
+      // backward-compatible aliases used elsewhere:
+      totalSpend: actualSpent, fixedSpend: paidFixed, budgetTotal: budgetDue, remaining: leftForMonth,
+      afterGoals: leftForMonth
     };
   }
 
@@ -378,22 +376,22 @@
         </div>`;
     }
 
-    const incomeUsedPct = t.totalIncome ? Math.min(100, (t.totalSpend / t.totalIncome) * 100) : 0;
-    const overIncome = t.totalIncome && t.totalSpend > t.totalIncome;
+    const committedPct = t.totalIncome ? Math.min(100, (t.committed / t.totalIncome) * 100) : 0;
+    const overIncome = t.totalIncome && t.committed > t.totalIncome;
 
     return `
       <div class="card">
         <h2>${monthLabel(activeMonth)}</h2>
         <div class="stats">
           <div class="stat"><div class="label">Income</div><div class="value">${fmt(t.totalIncome)}</div></div>
-          <div class="stat ${overIncome ? 'bad' : ''}"><div class="label">Total spend</div><div class="value">${fmt(t.totalSpend)}</div></div>
-          <div class="stat ${t.remaining < 0 ? 'bad' : 'good'}"><div class="label">Left to spend</div><div class="value">${fmt(t.remaining)}</div></div>
-          <div class="stat ${t.afterGoals < 0 ? 'warn' : 'good'}"><div class="label">After goals</div><div class="value">${fmt(t.afterGoals)}</div></div>
+          <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(t.actualSpent)}</div></div>
+          <div class="stat"><div class="label">Budget due</div><div class="value">${fmt(t.budgetDue)}</div></div>
+          <div class="stat ${t.leftForMonth < 0 ? 'bad' : 'good'}"><div class="label">Left for month</div><div class="value">${fmt(t.leftForMonth)}</div></div>
         </div>
         ${t.totalIncome ? `
-          <h3>Income used ${overIncome ? `<span class="badge-over">over by ${fmt(t.totalSpend - t.totalIncome)}</span>` : ''}</h3>
-          <div class="progress ${overIncome ? 'over' : 'good'}"><span style="width:${incomeUsedPct}%"></span></div>
-          <div class="hint">${fmt(t.totalSpend)} spent of ${fmt(t.totalIncome)} income${t.budgetTotal ? ` · fixed budget ${fmt(t.budgetTotal)}` : ''}</div>
+          <h3>Committed vs income ${overIncome ? `<span class="badge-over">over by ${fmt(t.committed - t.totalIncome)}</span>` : ''}</h3>
+          <div class="progress ${overIncome ? 'over' : 'good'}"><span style="width:${committedPct}%"></span></div>
+          <div class="hint">${fmt(t.committed)} committed (${fmt(t.actualSpent)} spent + ${fmt(t.budgetDue)} budget due) of ${fmt(t.totalIncome)} income</div>
         ` : ''}
       </div>
 
@@ -423,9 +421,9 @@
       const c = e.category || 'Other';
       byCat[c] = (byCat[c] || 0) + Number(e.amount || 0);
     }
-    // Include recurring fixed obligations so the breakdown sums to Total spend.
-    if (t.fixedSpend > 0) byCat['Fixed & EMIs'] = (byCat['Fixed & EMIs'] || 0) + t.fixedSpend;
-    const total = t.totalSpend || 1;
+    // Include fixed items you've marked Paid so the breakdown sums to Total spent.
+    if (t.paidFixed > 0) byCat['Fixed (paid)'] = (byCat['Fixed (paid)'] || 0) + t.paidFixed;
+    const total = t.actualSpent || 1;
     const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const max = top[0][1] || 1;
     return `
@@ -436,7 +434,7 @@
             <div class="flex-between"><span class="title">${esc(cat)}</span><span class="sub">${fmt(amt)} · ${Math.round(amt / total * 100)}%</span></div>
             <div class="progress"><span style="width:${Math.max(4, amt / max * 100)}%"></span></div>
           </div>`).join('')}
-        <div class="hint">${exp.length} spend${exp.length === 1 ? '' : 's'} logged${t.fixedSpend > 0 ? ' + recurring fixed obligations' : ''} this month.</div>
+        <div class="hint">${exp.length} spend${exp.length === 1 ? '' : 's'} this month${t.budgetDue > 0 ? ` · ${fmt(t.budgetDue)} fixed budget still due` : ''}.</div>
       </div>`;
   }
 
@@ -448,8 +446,8 @@
       return `
         <div class="card">
           <h2>Daily limit</h2>
-          <div class="stat bad"><div class="label">Available balance</div><div class="value">${fmt(balance)}</div></div>
-          <div class="hint" style="margin-top:10px;">⚠️ You're over your available balance this month. Pause non-essential spends until next income.</div>
+          <div class="stat bad"><div class="label">Left for month</div><div class="value">${fmt(balance)}</div></div>
+          <div class="hint" style="margin-top:10px;">⚠️ After this month's spend + fixed budget, you're over by ${fmt(-balance)}. Pause non-essential spends until next income.</div>
         </div>`;
     }
     const perDay = days > 0 ? balance / days : balance;
@@ -457,7 +455,7 @@
       <div class="card">
         <h2>Daily limit</h2>
         <div class="stats">
-          <div class="stat good"><div class="label">Available balance</div><div class="value">${fmt(balance)}</div></div>
+          <div class="stat good"><div class="label">Left for month</div><div class="value">${fmt(balance)}</div></div>
           <div class="stat"><div class="label">Spend / day${days ? ` (${days}d left)` : ''}</div><div class="value">${fmt(perDay)}</div></div>
         </div>
         <div class="hint" style="margin-top:10px;">Keep daily spends under ${fmt(perDay)} to stay on track for the rest of ${monthLabel(activeMonth)}.</div>
@@ -591,24 +589,20 @@
   }
 
   function renderBudgetCheck(t) {
-    if (!t.budgetTotal && !state.salary) {
-      return `<p class="hint">Add a salary and budgets in Setup to see if you're on track.</p>`;
+    if (!t.budgetDue && !state.salary && !t.actualSpent) {
+      return `<p class="hint">Add a salary and fixed items in Setup to see if you're on track.</p>`;
     }
-    const overBudget = t.budgetTotal && t.totalSpend > t.budgetTotal;
+    const over = t.leftForMonth < 0;
     const rows = [];
-    if (t.budgetTotal) {
-      rows.push(`<div class="flex-between"><span>Budget</span><span class="amount">${fmt(t.budgetTotal)}</span></div>`);
+    rows.push(`<div class="flex-between"><span>Income</span><span class="amount">${fmt(t.totalIncome)}</span></div>`);
+    rows.push(`<div class="flex-between"><span>Total spent</span><span class="amount">${fmt(t.actualSpent)}</span></div>`);
+    if (t.budgetDue) {
+      rows.push(`<div class="flex-between"><span>Fixed budget due</span><span class="amount">${fmt(t.budgetDue)}</span></div>`);
     }
-    rows.push(`<div class="flex-between"><span>Spent so far</span><span class="amount">${fmt(t.totalSpend)}</span></div>`);
-    if (t.budgetTotal) {
-      rows.push(`<div class="flex-between"><span>${overBudget ? 'Over budget' : 'Under budget'}</span><span class="${overBudget ? 'badge-over' : 'badge-under'}">${overBudget ? '-' : '+'}${fmt(Math.abs(t.budgetTotal - t.totalSpend))}</span></div>`);
-    }
-    rows.push(`<div class="flex-between"><span>Left from income</span><span class="${t.remaining < 0 ? 'badge-over' : 'badge-under'}">${fmt(t.remaining)}</span></div>`);
-    const msg = overBudget
-      ? `⚠️ You're over budget this month. Try to trim variable spending.`
-      : t.remaining < 0
-        ? `⚠️ You're spending more than your income this month.`
-        : `✅ You're on track. Keep it up!`;
+    rows.push(`<div class="flex-between"><span>Left for month</span><span class="${over ? 'badge-over' : 'badge-under'}">${fmt(t.leftForMonth)}</span></div>`);
+    const msg = over
+      ? `⚠️ Spend + fixed budget exceeds your income this month by ${fmt(-t.leftForMonth)}. Trim variable spending.`
+      : `✅ You're on track — ${fmt(t.leftForMonth)} free for the rest of the month.`;
     return rows.join('<div class="spacer"></div>') +
       `<div class="hint" style="margin-top:12px;">${msg}</div>`;
   }
