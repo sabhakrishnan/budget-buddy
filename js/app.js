@@ -347,7 +347,9 @@
 
   function renderDashboard() {
     const t = computeTotals(activeMonth);
-    const needsSetup = !state.salary && state.fixedItems.length === 0;
+    const hasData = state.fixedItems.length > 0 ||
+      Object.values(state.months).some((mo) => mo.expenses && mo.expenses.length);
+    const needsSetup = !state.salary && !hasData;
 
     if (needsSetup) {
       return `
