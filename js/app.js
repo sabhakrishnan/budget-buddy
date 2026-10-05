@@ -883,10 +883,16 @@
     if (e.target.id === 'exportXlsx') exportExcel();
     if (e.target.id === 'exportCsv') exportCsv();
     if (e.target.id === 'saveSync') {
+      if (!state.sync) state.sync = { url: '', lastAt: 0 };
       state.sync.url = document.getElementById('syncUrl').value.trim();
-      save(); render(); toast('Sync link saved');
+      save(); render(); toast(state.sync.url ? 'Sync link saved' : 'Link cleared');
     }
-    if (e.target.id === 'syncNow') syncEmails(true);
+    if (e.target.id === 'syncNow') {
+      if (!state.sync) state.sync = { url: '', lastAt: 0 };
+      const inp = document.getElementById('syncUrl');
+      if (inp && inp.value.trim()) { state.sync.url = inp.value.trim(); save(); }
+      syncEmails(true);
+    }
     if (e.target.id === 'addReminder') {
       const time = document.getElementById('remindTime').value || '21:00';
       downloadReminder(time);

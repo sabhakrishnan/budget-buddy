@@ -27,8 +27,8 @@
 
 const SPREADSHEET_NAME = 'Budget Buddy Data';
 const SHEET_NAME = 'Transactions';
-const LOOKBACK = 'newer_than:3d';   // how far back each run scans
-const MAX_THREADS = 150;
+const LOOKBACK = 'newer_than:30d';   // how far back each run scans (30d backfills the month)
+const MAX_THREADS = 250;
 
 // Senders that send you spend alerts. Add/remove to match your banks & cards.
 const SENDERS = [
@@ -58,9 +58,9 @@ function syncBankEmails() {
   const sh = ss.getSheetByName(SHEET_NAME);
   const seen = getSeenIds_(sh);
 
+  // Match by sender (so bank wording doesn't matter); the parser decides what's a real spend.
   const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' +
-    '(debited OR spent OR "you paid" OR "payment of" OR "has been debited" OR "spent on") ' +
-    LOOKBACK;
+    LOOKBACK + ' -category:promotions';
 
   const threads = GmailApp.search(query, 0, MAX_THREADS);
   const rows = [];
@@ -112,22 +112,31 @@ function getSeenIds_(sh) {
 function parseEmail_(text) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
   if (!t) return null;
-  // Skip credits / refunds / failures.
-  if (/credited|refund|received|reversal|failed|declined/i.test(t) &&
-    !/debited|spent|you paid|payment of/i.test(t)) return null;
+  const low = t.toLowerCase();
+
+  // Skip credits / refunds unless it's clearly a debit.
+  if (/\b(credited|refund|received|reversal|failed|declined)\b/.test(low) &&
+    !/\b(debited|spent|purchase|made on|payment of|upi txn|has been made)\b/.test(low)) return null;
+  // Skip statements, OTPs, and marketing (these aren't spends).
+  if (/statement|amount due|minimum (amount )?due|due date|bill generated|e-statement|\botp\b|one time password|reward point|\boffer\b|cashback|voucher|congratulations|pre-?approved|discount|% off/.test(low)) return null;
 
   let amount = 0;
   const am = t.match(/(?:inr|rs|₹)\.?\s*([\d,]+(?:\.\d{1,2})?)/i) ||
-    t.match(/\bdebited(?:\s+by|\s+with)?\s*(?:inr|rs|₹)?\.?\s*([\d,]+(?:\.\d{1,2})?)/i);
+    t.match(/\bamount[^\d]{0,15}([\d,]+(?:\.\d{1,2})?)/i);
   if (am) amount = Number(am[1].replace(/,/g, ''));
+  if (!amount) return null;
 
   let name = '';
   const m =
-    t.match(/\b(?:to VPA|VPA)\s+([a-z0-9._-]+)@/i) ||
-    t.match(/\bpaid\s+(?:inr|rs|₹)?\.?[\d,.]*\s+to\s+([A-Za-z0-9&.\- ]{2,40})/i) ||
-    t.match(/\b(?:at|to|towards|for)\s+([A-Za-z0-9&.\- ]{2,40}?)\s+(?:on|dated|ref|via|using|for|a\/c|txn|upi|info|is\b)/i) ||
-    t.match(/\b(?:at|to)\s+([A-Za-z0-9&.\- ]{2,40})/i);
-  if (m) name = m[1].trim().replace(/[.\-]+$/, '');
+    t.match(/\bto VPA\s+([a-z0-9._-]+)@/i) ||
+    t.match(/\bat\s+([A-Za-z0-9&.'\- ]{2,40}?)\s+(?:on|dated)\b/i) ||
+    t.match(/\bInfo[:\- ]+(?:UPI[\/-])?([A-Za-z0-9&.\- ]{2,40})/i) ||
+    t.match(/\bto\s+([A-Za-z0-9&.'@\- ]{2,40}?)\s+(?:on|dated|via|ref|upi|\()/i) ||
+    t.match(/\bTo[:\- ]+([A-Za-z0-9&.'@\- ]{2,40}?)\s+(?:Date|UPI|Ref|on\b)/i);
+  if (m) {
+    name = m[1].trim().replace(/[.\-]+$/, '');
+    if (/^(rs|inr|\d)/i.test(name)) name = '';  // reject amount fragments
+  }
 
   return { amount: amount, merchant: name, category: autoCategory_(t) };
 }
@@ -149,3 +158,25 @@ function autoCategory_(text) {
   }
   return '';
 }
+
+/**
+ * Debug helper: run this to see what the search finds and how each email parses.
+ * Then open View > Execution log and share it (redact account/card numbers).
+ */
+function debugScan() {
+  const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' + LOOKBACK + ' -category:promotions';
+  const threads = GmailApp.search(query, 0, 25);
+  Logger.log('Query: ' + query);
+  Logger.log('Matching threads: ' + threads.length);
+  let shown = 0;
+  threads.forEach((th) => {
+    th.getMessages().forEach((msg) => {
+      if (shown >= 15) return;
+      const p = parseEmail_(msg.getPlainBody());
+      Logger.log('• FROM: %s | SUBJECT: %s | PARSED: %s',
+        msg.getFrom(), msg.getSubject(), p ? ('Rs ' + p.amount + ' @ ' + (p.merchant || '?') + ' [' + (p.category || '-') + ']') : 'skipped');
+      shown++;
+    });
+  });
+}
+
