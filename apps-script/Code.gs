@@ -32,11 +32,13 @@ const MAX_THREADS = 250;
 
 // Senders that send you spend alerts. Add/remove to match your banks & cards.
 // NOTE: use SPECIFIC domains — a broad one like "google.com" matches all Gmail/Calendar/ads.
+// Indian banks now use the RBI ".bank.in" domain for alerts (e.g. alerts@hdfcbank.bank.in).
 const SENDERS = [
-  'hdfcbank.net', 'hdfcbank.com',          // HDFC InstaAlerts, UPI, credit card
-  'sbi.co.in', 'onlinesbi.sbi', 'sbicard.com',
-  'icicibank.com', 'axisbank.com', 'iob.in',
-  'phonepe.com', 'paytm.com'               // UPI app receipts
+  'hdfcbank.bank.in',                       // HDFC InstaAlerts / UPI / credit card (current domain)
+  'hdfcbank.net', 'hdfcbank.com',           // older HDFC domains
+  'sbi.bank.in', 'sbi.co.in', 'onlinesbi.sbi', 'sbicard.com',
+  'kotak.bank.in', 'icicibank.com', 'axisbank.com', 'iob.in',
+  'phonepe.com', 'paytm.com'                // UPI app receipts
 ];
 
 /** Run this once from the editor to create the sheet + 15-min trigger. */
