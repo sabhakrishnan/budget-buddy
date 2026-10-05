@@ -31,12 +31,12 @@ const LOOKBACK = 'newer_than:30d';   // how far back each run scans (30d backfil
 const MAX_THREADS = 250;
 
 // Senders that send you spend alerts. Add/remove to match your banks & cards.
+// NOTE: use SPECIFIC domains — a broad one like "google.com" matches all Gmail/Calendar/ads.
 const SENDERS = [
-  'hdfcbank.net', 'hdfcbank.com',
+  'hdfcbank.net', 'hdfcbank.com',          // HDFC InstaAlerts, UPI, credit card
   'sbi.co.in', 'onlinesbi.sbi', 'sbicard.com',
   'icicibank.com', 'axisbank.com', 'iob.in',
-  'google.com',            // Google Pay receipts
-  'phonepe.com', 'paytm.com'
+  'phonepe.com', 'paytm.com'               // UPI app receipts
 ];
 
 /** Run this once from the editor to create the sheet + 15-min trigger. */
@@ -165,13 +165,13 @@ function autoCategory_(text) {
  */
 function debugScan() {
   const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' + LOOKBACK + ' -category:promotions';
-  const threads = GmailApp.search(query, 0, 25);
+  const threads = GmailApp.search(query, 0, 60);
   Logger.log('Query: ' + query);
   Logger.log('Matching threads: ' + threads.length);
   let shown = 0;
   threads.forEach((th) => {
     th.getMessages().forEach((msg) => {
-      if (shown >= 15) return;
+      if (shown >= 30) return;
       const p = parseEmail_(msg.getPlainBody());
       Logger.log('• FROM: %s | SUBJECT: %s | PARSED: %s',
         msg.getFrom(), msg.getSubject(), p ? ('Rs ' + p.amount + ' @ ' + (p.merchant || '?') + ' [' + (p.category || '-') + ']') : 'skipped');
