@@ -59,8 +59,7 @@ function syncBankEmails() {
   const seen = getSeenIds_(sh);
 
   // Match by sender (so bank wording doesn't matter); the parser decides what's a real spend.
-  const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' +
-    LOOKBACK + ' -category:promotions';
+  const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' + LOOKBACK;
 
   const threads = GmailApp.search(query, 0, MAX_THREADS);
   const rows = [];
@@ -164,19 +163,32 @@ function autoCategory_(text) {
  * Then open View > Execution log and share it (redact account/card numbers).
  */
 function debugScan() {
-  const query = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' + LOOKBACK + ' -category:promotions';
-  const threads = GmailApp.search(query, 0, 60);
-  Logger.log('Query: ' + query);
-  Logger.log('Matching threads: ' + threads.length);
+  // 1) What the sync currently sees (by sender).
+  const q1 = '(' + SENDERS.map((s) => 'from:' + s).join(' OR ') + ') ' + LOOKBACK;
+  const t1 = GmailApp.search(q1, 0, 60);
+  Logger.log('[SYNC] threads: %s  query: %s', t1.length, q1);
   let shown = 0;
-  threads.forEach((th) => {
-    th.getMessages().forEach((msg) => {
-      if (shown >= 30) return;
-      const p = parseEmail_(msg.getPlainBody());
-      Logger.log('• FROM: %s | SUBJECT: %s | PARSED: %s',
-        msg.getFrom(), msg.getSubject(), p ? ('Rs ' + p.amount + ' @ ' + (p.merchant || '?') + ' [' + (p.category || '-') + ']') : 'skipped');
-      shown++;
-    });
-  });
+  t1.forEach((th) => th.getMessages().forEach((m) => {
+    if (shown >= 20) return;
+    const p = parseEmail_(m.getPlainBody());
+    Logger.log('• %s | %s | %s', m.getFrom(), m.getSubject(),
+      p ? ('Rs ' + p.amount + ' @ ' + (p.merchant || '?') + ' [' + (p.category || '-') + ']') : 'skipped');
+    shown++;
+  }));
+
+  // 2) Discovery: find the REAL senders of transaction emails by content (any sender, any tab).
+  const q2 = 'newer_than:45d ("UPI txn" OR "has been debited" OR "debited from" OR "credit card" OR InstaAlert OR "payment was made" OR "spent on" OR "debited for")';
+  const t2 = GmailApp.search(q2, 0, 40);
+  Logger.log('--- DISCOVERY: unique senders of transaction-like emails (add the bank ones to SENDERS) ---');
+  Logger.log('[DISCOVERY] threads: %s', t2.length);
+  const seen = {};
+  let d = 0;
+  t2.forEach((th) => th.getMessages().forEach((m) => {
+    if (d >= 25) return;
+    const from = m.getFrom();
+    if (seen[from]) return;
+    seen[from] = true; d++;
+    Logger.log('↳ FROM: %s | %s', from, m.getSubject());
+  }));
 }
 
