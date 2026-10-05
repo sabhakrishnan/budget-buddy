@@ -378,23 +378,22 @@
         </div>`;
     }
 
-    const budgetUsedPct = t.budgetTotal ? Math.min(100, (t.totalSpend / t.budgetTotal) * 100) : 0;
-    const overBudget = t.budgetTotal && t.totalSpend > t.budgetTotal;
-    const spendPct = state.salary ? (t.totalSpend / state.salary) * 100 : null;
+    const incomeUsedPct = t.totalIncome ? Math.min(100, (t.totalSpend / t.totalIncome) * 100) : 0;
+    const overIncome = t.totalIncome && t.totalSpend > t.totalIncome;
 
     return `
       <div class="card">
         <h2>${monthLabel(activeMonth)}</h2>
         <div class="stats">
           <div class="stat"><div class="label">Income</div><div class="value">${fmt(t.totalIncome)}</div></div>
-          <div class="stat ${overBudget ? 'bad' : ''}"><div class="label">Total spend</div><div class="value">${fmt(t.totalSpend)}</div></div>
+          <div class="stat ${overIncome ? 'bad' : ''}"><div class="label">Total spend</div><div class="value">${fmt(t.totalSpend)}</div></div>
           <div class="stat ${t.remaining < 0 ? 'bad' : 'good'}"><div class="label">Left to spend</div><div class="value">${fmt(t.remaining)}</div></div>
           <div class="stat ${t.afterGoals < 0 ? 'warn' : 'good'}"><div class="label">After goals</div><div class="value">${fmt(t.afterGoals)}</div></div>
         </div>
-        ${t.budgetTotal ? `
-          <h3>Budget used ${overBudget ? `<span class="badge-over">over by ${fmt(t.totalSpend - t.budgetTotal)}</span>` : ''}</h3>
-          <div class="progress ${overBudget ? 'over' : 'good'}"><span style="width:${budgetUsedPct}%"></span></div>
-          <div class="hint">${fmt(t.totalSpend)} of ${fmt(t.budgetTotal)} budget${spendPct != null ? ` · ${spendPct.toFixed(0)}% of salary` : ''}</div>
+        ${t.totalIncome ? `
+          <h3>Income used ${overIncome ? `<span class="badge-over">over by ${fmt(t.totalSpend - t.totalIncome)}</span>` : ''}</h3>
+          <div class="progress ${overIncome ? 'over' : 'good'}"><span style="width:${incomeUsedPct}%"></span></div>
+          <div class="hint">${fmt(t.totalSpend)} spent of ${fmt(t.totalIncome)} income${t.budgetTotal ? ` · fixed budget ${fmt(t.budgetTotal)}` : ''}</div>
         ` : ''}
       </div>
 
@@ -414,18 +413,20 @@
       </div>`;
   }
 
-  // Weekly-review style card: where this month's variable spending is going.
+  // Weekly-review style card: where this month's spending is going (variable + fixed obligations).
   function renderReview() {
     const exp = getMonth(activeMonth).expenses;
-    if (!exp.length) return '';
+    const t = computeTotals(activeMonth);
+    if (!exp.length && !t.fixedSpend) return '';
     const byCat = {};
-    let total = 0;
     for (const e of exp) {
       const c = e.category || 'Other';
       byCat[c] = (byCat[c] || 0) + Number(e.amount || 0);
-      total += Number(e.amount || 0);
     }
-    const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    // Include recurring fixed obligations so the breakdown sums to Total spend.
+    if (t.fixedSpend > 0) byCat['Fixed & EMIs'] = (byCat['Fixed & EMIs'] || 0) + t.fixedSpend;
+    const total = t.totalSpend || 1;
+    const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const max = top[0][1] || 1;
     return `
       <div class="card">
@@ -435,7 +436,7 @@
             <div class="flex-between"><span class="title">${esc(cat)}</span><span class="sub">${fmt(amt)} · ${Math.round(amt / total * 100)}%</span></div>
             <div class="progress"><span style="width:${Math.max(4, amt / max * 100)}%"></span></div>
           </div>`).join('')}
-        <div class="hint">${exp.length} spend${exp.length > 1 ? 's' : ''} logged this month.</div>
+        <div class="hint">${exp.length} spend${exp.length === 1 ? '' : 's'} logged${t.fixedSpend > 0 ? ' + recurring fixed obligations' : ''} this month.</div>
       </div>`;
   }
 
