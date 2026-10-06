@@ -1,5 +1,5 @@
 /* Simple offline cache for Budget Buddy. */
-const CACHE = 'budget-buddy-v12';
+const CACHE = 'budget-buddy-v13';
 const ASSETS = [
   './',
   './index.html',

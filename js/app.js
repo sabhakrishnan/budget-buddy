@@ -94,6 +94,10 @@
   function monthKey(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
+  function isoDate(d) {
+    const z = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+  }
   function monthLabel(key) {
     const [y, m] = key.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
@@ -556,7 +560,7 @@
         <div class="section-title"><h2>This month's expenses</h2><span class="amount">${fmt(t.varSpend)}</span></div>
         ${month.expenses.length === 0
           ? `<p class="empty">Nothing added yet.</p>`
-          : `<ul class="list">${month.expenses.map(expenseRow).join('')}</ul>`}
+          : `<ul class="list">${[...month.expenses].sort((a, b) => (b.date || '9999').localeCompare(a.date || '9999')).map(expenseRow).join('')}</ul>`}
       </div>
 
       <div class="card">
@@ -589,11 +593,12 @@
   }
 
   function expenseRow(e) {
+    const dt = e.date ? new Date(e.date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
     return `
       <li class="row">
         <div class="grow">
           <div class="title">${esc(e.name)}</div>
-          <div class="sub">${e.category ? `<span class="pill">${esc(e.category)}</span> ` : ''}${e.source === 'email' ? '<span class="pill auto">Auto</span> ' : ''}${esc(e.details || '')}</div>
+          <div class="sub">${dt ? `<span class="muted">${dt}</span> ` : ''}${e.category ? `<span class="pill">${esc(e.category)}</span> ` : ''}${e.source === 'email' ? '<span class="pill auto">Auto</span> ' : ''}${esc(e.details || '')}</div>
         </div>
         <div class="amount db">${fmt(e.amount)}</div>
         <button class="icon-delete" data-del-expense="${e.id}" aria-label="Delete">🗑</button>
@@ -849,7 +854,8 @@
         name,
         amount: Number(f.get('amount')),
         category: (f.get('category') || '').trim() || autoCategory(name) || 'Other',
-        details: (f.get('details') || '').trim()
+        details: (f.get('details') || '').trim(),
+        date: monthKey(new Date()) === activeMonth ? isoDate(new Date()) : activeMonth + '-01'
       });
       pendingShare = null;
       save(); render(); toast('Expense added'); return;
