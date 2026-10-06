@@ -376,23 +376,35 @@
         </div>`;
     }
 
-    const committedPct = t.totalIncome ? Math.min(100, (t.committed / t.totalIncome) * 100) : 0;
-    const overIncome = t.totalIncome && t.committed > t.totalIncome;
+    const income = t.totalIncome || 0;
+    const d = Math.max(income, 1);
+    const spentPct = Math.min(100, (t.actualSpent / d) * 100);
+    const committedPct = Math.min(100, ((t.actualSpent + t.budgetDue) / d) * 100);
+    const over = t.leftForMonth < 0;
+    const ring = `conic-gradient(var(--primary) 0 ${spentPct}%, var(--amber) ${spentPct}% ${committedPct}%, rgba(255,255,255,0.1) ${committedPct}% 100%)`;
 
     return `
       <div class="card">
-        <h2>${monthLabel(activeMonth)}</h2>
-        <div class="stats">
-          <div class="stat"><div class="label">Income</div><div class="value">${fmt(t.totalIncome)}</div></div>
-          <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(t.actualSpent)}</div></div>
-          <div class="stat"><div class="label">Budget due</div><div class="value">${fmt(t.budgetDue)}</div></div>
-          <div class="stat ${t.leftForMonth < 0 ? 'bad' : 'good'}"><div class="label">Left for month</div><div class="value">${fmt(t.leftForMonth)}</div></div>
+        <div class="ring-row">
+          <div class="ring" style="background:${ring};">
+            <div class="ring-in">
+              <div class="ring-n ${over ? 'neg' : 'pos'}">${fmt(t.leftForMonth)}</div>
+              <div class="ring-l">left for month</div>
+            </div>
+          </div>
+          <div class="ring-legend">
+            <div class="li"><i class="ldot" style="background:var(--primary)"></i><span>Spent</span><b>${fmt(t.actualSpent)}</b></div>
+            <div class="li"><i class="ldot" style="background:var(--amber)"></i><span>Budget due</span><b>${fmt(t.budgetDue)}</b></div>
+            <div class="li"><i class="ldot" style="background:rgba(255,255,255,0.28)"></i><span>Income</span><b>${fmt(income)}</b></div>
+          </div>
         </div>
-        ${t.totalIncome ? `
-          <h3>Committed vs income ${overIncome ? `<span class="badge-over">over by ${fmt(t.committed - t.totalIncome)}</span>` : ''}</h3>
-          <div class="progress ${overIncome ? 'over' : 'good'}"><span style="width:${committedPct}%"></span></div>
-          <div class="hint">${fmt(t.committed)} committed (${fmt(t.actualSpent)} spent + ${fmt(t.budgetDue)} budget due) of ${fmt(t.totalIncome)} income</div>
-        ` : ''}
+        <div class="stmt">
+          <div class="sr"><span>Income</span><b>${fmt(income)}</b></div>
+          <div class="sr"><span>Total spent</span><b>− ${fmt(t.actualSpent)}</b></div>
+          <div class="sr"><span>Budget due</span><b>− ${fmt(t.budgetDue)}</b></div>
+          ${t.goalContrib ? `<div class="sr"><span>Goals</span><b>− ${fmt(t.goalContrib)}</b></div>` : ''}
+          <div class="sr total"><span>Left for month</span><b class="${over ? 'neg' : 'pos'}">${fmt(t.leftForMonth)}</b></div>
+        </div>
       </div>
 
       ${renderDailyLimit(t)}
